@@ -1,0 +1,228 @@
+{% load static %}
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>ImmersiveX - Tables</title>
+	<meta name="description" content="Tables">
+	<meta name="author" content="Moreno Colombo">
+	<link rel="stylesheet" href="{% static 'css/table_style.css' %}">
+	<script src="{% static 'js/jquery.min.js' %}"></script>
+</head>
+
+<body>
+	<h1>Database content</h1>
+	<div id="filterscontainer">
+		<fieldset id="columns">
+		<legend>Select details to show in the table</legend>
+			{% for k,vals in tableData.filters.items %}
+					<fieldset>
+					<legend><b class="filtertitle">{{ k }}</b></legend>
+					{% for v in vals %}
+						<input class="checkvalue" type="checkbox" checked="true" name="{{ k }}_{{ v.name }}" value="{{ k }}_{{ v.name }}"/>
+						<label for="{{ k }}_{{ v.name }}">{{ v.name }}</label>
+					{% endfor %}
+					</fieldset>
+			{% endfor %}
+		</fieldset>
+		
+		<fieldset id="filters">
+		<legend>Filter table content</legend>
+		<table id="filts">
+		<tr><th style="width:60px"></th><th>Field</th><th>Operator</th><th>Value</th></tr>
+		</table>
+		<button id="add_filter" class="navigation" onclick="addFilter();">+</button>
+		</fieldset>
+		<p><button id="updatecolumns" onclick="updateTable();"><span>Update </span></button></p>
+	</div>
+	
+	<div id="table">
+		<h2>{{ tableData.type }}</h2>
+		<div id="pageNav">
+			<button class="navigation" onclick="changePage('dPrev')">	&#10094;&#10094;</button>
+			<button class="navigation" onclick="changePage('prev')">	&#10094;</button>
+			<a id="pageNum"></a>
+			<button class="navigation" onclick="changePage('next')">	&#10095;</button>
+			<button class="navigation" onclick="changePage('dNext')">	&#10095;&#10095;</button>
+		</div>
+		<div>
+			<a id="recordsNum"></a>
+			<button id="export" onclick="exportAsCSV()">Export to .csv</button>
+		</div>
+		<table id="dbcontent">
+		</table>
+	</div>
+</body>
+
+<script type="text/javascript">
+var tableData = {{ tableData | safe }};
+var data = tableData.data;
+var page = 1;
+var maxPages = Math.ceil(data.length/50);
+
+var filterNum=0;
+var filters = "";
+var filteredData = JSON.parse(JSON.stringify(data));
+
+window.onload = function(){populateTable(); addFilter()};
+
+function updateTable(){
+	filter();
+	populateTable();
+};
+
+function populateTable(){
+	var selectedColumns = $("#filterscontainer input:checked").map(function(i,el){return el.name;}).get();
+	// Delete old created table
+	$("#dbcontent tr").remove();
+	
+	// Populate table
+	if(selectedColumns.length>0){
+		// Show column headers
+		var html = "<tr>"
+		for(var i = 0; i<selectedColumns.length; i++){
+			html = html+"<th>"+selectedColumns[i]+"</th>";
+		}
+		$("#dbcontent").append(html+"</tr>");
+	
+		// Fill table with data
+		for(var i = (page-1)*50; i< Math.min(page*50, filteredData.length); i++){
+			var html = "<tr>";
+			for(var k = 0; k<selectedColumns.length; k++){
+				html = html+"<td>"+filteredData[i][selectedColumns[k]]+"</td>";
+			}
+			$("#dbcontent").append(html+"</tr>");
+		}
+		
+		// Display the number of elements
+		$("#recordsNum").text(filteredData.length+" "+tableData.type);
+		$("#pageNum").text("Page "+page+" of "+maxPages)
+	}	
+}
+
+function changePage(method){
+	switch(method){
+		case "dPrev":
+			page = Math.max(1,page-5); break;
+		case "prev":
+			page = Math.max(1,page-1); break;
+		case "next":
+			page = Math.min(maxPages, page+1); break;
+		case "dNext":
+			page = Math.min(maxPages, page+5); break;
+	}
+	populateTable();
+}
+
+// Add filter line
+function addFilter(){
+	var html = '<tr class="filter"><td>'
+	if(filterNum==0)
+		html+="</td><td><select id='field'>";
+	else
+		html+="<select id='andor'><option value='&&'>AND</option><option value='||'>OR</option></select></td><td><select id='field'>";
+		
+	var key;
+	for(key in tableData.filters){
+		for(var i=0; i<tableData.filters[key].length; i++){
+			html+= "<option value='"+tableData.filters[key][i].type+"'>"+key+"_"+tableData.filters[key][i].name+"</option>";
+		}
+	}
+	html+="</select></td>"
+		+"<td><select id='operator'><option>==</option><option>!=</option><option><</option><option>></option><option><=</option><option>>=</option></select></td>"
+		+"<td><input type='text' id='filterVal'></input></td>";
+	
+	if(filterNum==0)
+		html+="<td></td>";
+	else
+		html+="<td><button id='remove_filter' class='navigation' onclick='removeFilter(this)'>-</button></td>";
+
+	
+	$("#filts").append(html+"</tr>");
+	filterNum++;
+}
+
+// Remove filter line
+$(function () {
+	removeFilter = function (elm) {
+		$(elm).parents("tr").remove();
+	};
+});
+
+// Build filter string
+function buildFilterString(){
+	filters = "";
+	$(".filter").each(function( index ){
+			var andor = $(this).find("#andor").val() || "";
+			var type = $(this).find("#field").val();
+			var field = $(this).find("#field").children("option").filter(":selected").text();
+			var operator = $(this).find("#operator").val();
+			var filterVal = $(this).find("#filterVal").val();
+			var filteredVal = "";
+			if(type == "str"){
+				field = "x['"+field+"']";
+				filteredVal = "'"+filterVal+"'";				
+			}else if(type == "dateTime"){
+				// check if also the time is set in the filterVal
+				filteredVal = "'"+filterVal+"'";
+				if(filterVal.split(":").length > 1){
+					field = "x['"+field+"']";
+				}else{
+					field = "x['"+field+"'].split(' ')[0]";
+				}
+			}else{
+				filteredVal = filterVal;
+				field = "x['"+field+"']";				
+			}
+			if(filterVal.length>=1){
+				filters+= andor+" "+field+" "+operator+" "+filteredVal;
+			}
+		});
+}
+
+function filter(){
+	buildFilterString();
+	filteredData = [];
+	for(var i=0;i<data.length;i++){
+		var d=data[i];
+		if(isOkay(d))
+			filteredData.push(d);
+	}
+	maxPages = Math.ceil(filteredData.length/50);
+	page = Math.min(maxPages, page)|1;
+}
+
+function isOkay(x){
+	var res = eval(filters);
+	return res!=undefined?res:true;
+}
+
+function exportAsCSV(){
+	var selectedColumns = $("#filterscontainer input:checked").map(function(i,el){return el.name;}).get();
+	var csv="data:text/csv;charset=utf-8,";
+	// Add headers
+	for(var i=0; i<selectedColumns.length; i++){
+		csv = csv+selectedColumns[i]+", ";
+	}
+	csv = csv.slice(0, -2)
+	csv+="\n";
+	
+	// Add data to csv content
+	for(var i=0; i<filteredData.length; i++){
+		var temp = "";
+		for(var j=0; j<selectedColumns.length; j++){
+			temp = temp+filteredData[i][selectedColumns[j]]+", ";
+		}
+		csv += temp.slice(0, -2)+"\n"
+	}
+	
+	// Download csv data
+	var encodedUri = encodeURI(csv);
+	var link = document.createElement("a");
+	link.setAttribute("href", encodedUri);
+	link.setAttribute("download", tableData.type+".csv");
+	document.body.appendChild(link); // Required for FF
+	link.click(); // This will download the data
+}
+</script>
+</html>

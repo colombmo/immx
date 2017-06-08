@@ -1,0 +1,679 @@
+<!-- {# 
+#
+# 	add_event.html
+#	Author: Moreno Colombo
+#	Creation date: 27.12.2016
+#	Last modified: 14.01.2017
+#
+#	Description: Graphical interface for the configuration of a new event
+#
+#} -->
+
+
+<!-- {# Headers to have same style as in other pages of admin #} -->
+{% extends "admin/change_form.html" %}
+{% load static %}
+
+<!-- {# Fields of the form: default fields + personalized fields + graphical UI for paths and sensors positioning #} -->
+{% block field_sets %}
+{{ block.super }}
+
+<div class="form-row field-name">     
+	<div>            
+		<label for="sensorNum">Number of sensors: </label>
+		<input class="vTextField" id="sensorNum" name="sensorNum" type="number" min="1" max="99">
+		<input type="button" id="checkNum" value="Update" onclick="updateSensors()"></input>
+	</div>
+	<div id="floorz">
+		<label for="F_0">Floor number</label><p></p>
+		<input type="button" id="F_0" value="F0" onclick="updateFloor(0)" style="background-color:#2ecc71" disabled="true"></input>
+		<input type="button" id="F_1" value="F1" onclick="updateFloor(1)" style="background-color:#3498db"></input>
+		<input type="button" id="F_2" value="F2" onclick="updateFloor(2)" style="background-color:#9b59b6"></input>
+		<input type="button" id="F_3" value="F3" onclick="updateFloor(3)" style="background-color:#f1c40f"></input>
+		<input type="button" id="F_4" value="F4" onclick="updateFloor(4)" style="background-color:#e67e22"></input>
+		<input type="button" id="F_5" value="F5" onclick="updateFloor(5)" style="background-color:#e74c3c"></input>
+		<input type="button" id="F_6" value="F6" onclick="updateFloor(6)" style="background-color:#bdc3c7"></input>
+		<input type="button" id="F_7" value="F7" onclick="updateFloor(7)" style="background-color:#7f8c8d"></input>
+		<input type="button" id="F_8" value="F8" onclick="updateFloor(8)" style="background-color:#2c3e50"></input>
+		<input type="button" id="F_9" value="F9" onclick="updateFloor(9)" style="background-color:#000000"></input>	
+	</div>
+</div>
+
+<div style="width:100%;">
+	<div id="viz" style="float:left; width:auto;"></div>
+	<div id="menu" style="padding-top:10px;">
+		<h1>Menu</h1>
+		<div>
+            <label for="sensorName">Name of selected sensor: </label><p></p>
+			<input type="text" id="sensorName" placeholder="Name of the sensor&hellip;" onblur="changeName();"><p></p>
+			<!--<label for="sec_antenna">Secondary antenna for selected sensor: </label><p></p>
+			<input type="number" id="sec_antenna" placeholder="Id of second antenna&hellip;" onblur="changeSecondary();">
+			-->
+        </div>
+		<div>
+			<label for="mode">Edition mode: </label>
+			<p>
+				<input type="button" id="sensors" value="Sensors" disabled="true" onclick="editSensors();"/>
+				<input type="button" id="obstacles" value="Obstacles" onclick="editObstacles();"/>
+				<input type="button" id="floors" value="Floors" onclick="editFloors();"/>
+			</p>
+		</div>
+		<div>
+			<input type="button" id="findPath" value="Generate path" onclick="generatePath();"/>
+		</div>
+	</div>
+</div>
+{% endblock %}
+
+{% block submit_buttons_bottom %}
+   <div class="submit-row" style="width:100%">
+		{# <input type="submit" value='Save' name="_save" /> #}
+		<input type="button" id="save" value="Save" onclick="submitForm()">
+    </div>
+{% endblock %}
+
+{% block content%}
+{# Add scripts to the content of the page #}
+<script src="{% static 'js/jquery.min.js' %}"></script>
+<script src="{% static 'js/d3.min.js' %}"></script>
+<script src="{% static 'js/astar.js' %}"></script>
+<script src="{% static 'js/csrf.js' %}"></script>
+
+{{block.super}}
+<script type="text/javascript">
+// Setup ajax to use csrf_token
+function csrfSafeMethod(method) {
+    // these HTTP methods do not require CSRF protection
+    return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+}
+
+var token = getCookie('csrftoken');
+
+$.ajaxSetup({
+    beforeSend: function(xhr, settings) {
+        if (!csrfSafeMethod(settings.type) && !this.crossDomain) {
+            xhr.setRequestHeader("X-CSRFToken", token);
+        }
+    }
+});
+</script>
+<script type="text/javascript">
+// Keep 16:9 aspect ratio
+var height = 0.72*screen.height,
+	width = 16*height/9;
+	
+// Data
+var nodes;
+var paths = [];
+
+// Variables for menu&mode change
+var selectedNode=-1;
+var selectedFloor=0;
+var colors = ["#2ecc71", "#3498db", "#9b59b6", "#f1c40f", "#e67e22", "#e74c3c", "#bdc3c7", "#7f8c8d", "#2c3e50", "#000000"];
+var SENSOR = 0,
+	OBSTACLE = 1,
+	FLOOR = 2;
+var mode=SENSOR;
+
+// Store the grid for obstacles and initialize it as a matrix without obstacles, same for floors
+var obs=[];
+var floors=[];
+// Keep 16:9 aspect ratio
+var gWidth = 128,
+	gHeight = 72;
+for(var x=0;x<gWidth;x++){
+	obs[x]=[];
+	floors[x]=[];
+	for(var y=0;y<gHeight;y++){
+		obs[x][y]=1;
+		floors[x][y]=-1;
+	}
+}
+
+// Keep track of pressed/released mouse
+var mousedown = false;
+
+// Append svg object where we draw our edition system
+var svg = d3.select("#viz").append("svg").attr("width", width).attr("height", height);
+
+/**
+*	Draw everything on layers (from back to front):
+*	- Background
+*	- Sensors
+*	- Grid
+*/
+var bg = svg.append("g");
+var fg = svg.append("g");
+var ffg = svg.append("g");
+
+// Draw grid in the svg
+drawGrid();
+
+// Show uploaded background image in svg
+d3.select("#id_background").attr("onchange","updatebg(this);")
+
+function updatebg(input) {
+	if (input.files && input.files[0]) {
+		var reader = new FileReader();
+		reader.onload = function (e) {
+			bg.append("svg:image").attr('xlink:href', e.target.result).attr("x", 0).attr("y", 0)
+			.attr("width", width)
+			.attr("height", height);
+		}
+		reader.readAsDataURL(input.files[0]);
+	}
+}
+
+// Initialize N sensors, where N is the number inserted in #sensorNum 
+function updateSensors(){
+	var sensNum = document.getElementById("sensorNum").value;
+	if(sensNum>0 && sensNum<100){
+		if(typeof nodes === "undefined" || nodes === null){
+			nodes = d3.range(0, sensNum).map(function(d){ return {id: d+1, name: ""}});
+			
+			// Draw sensors in the svg
+			drawGraph();
+		}else if(nodes.length <= sensNum){
+			var temp = d3.range(nodes.length,sensNum).map(function(d){return {id: d+1, name: ""}});
+			nodes = nodes.concat(temp);
+			drawGraph();
+		}else{
+			nodes.splice(sensNum-nodes.length, nodes.length-sensNum);
+			drawGraph();
+		}
+	}else{
+		window.alert("Number of sensors has to be between 1 and 99")
+	}
+}
+
+// Update selected floor number
+function updateFloor(num){
+	selectedFloor = num;
+	for(var i=0;i<10;i++){
+		document.getElementById("F_"+i).disabled = false;
+	}
+	document.getElementById("F_"+num).disabled = true;
+}
+
+// Initialize force layout
+function drawGraph() {
+	var simulation = d3.forceSimulation()
+		.force("charge", d3.forceManyBody().strength(-500))
+		.force("center", d3.forceCenter(width / 2, height / 2)).force("y", d3.forceY(0)).force("x", d3.forceX(0));
+	
+	// Node = circle + id + name_tooltip
+	var node = fg.selectAll(".node")
+		.data(nodes)
+		.enter().append("g")
+		.attr("class", "node")
+		.attr("id", function(d){return "node_"+d.id;})
+		.call(d3.drag()
+			.on("start", dragstarted)
+			.on("drag", dragged)
+			.on("end", dragended))
+		.on("mouseover",function(d){d3.select(this).style("cursor", "pointer")})
+		.on("mouseout",function(d){d3.select(this).style("cursor", "default")});
+	
+	fg.selectAll(".node").data(nodes).exit().remove();
+	
+	var circle = node.append("circle").attr("fill","red").attr("id", function(d){return "circle_"+d.id;}).attr("r", function(d){  return 10 });
+	
+	var id = node.append("text")
+		.attr("fill", function(d){return "white"})
+		.attr("pointer-events","none")
+		.attr("dx", function(d) { return -5; })
+		.attr("dy", function(d) { return 4; })
+		.text(function(d){return d.id});    
+		
+	var name = node.append("text")
+		.attr("pointer-events","none")
+		.attr("id", function(d){return "name_"+d.id;})
+		.attr("dx", function(d) { return 11; })
+		.attr("dy", function(d) { return 4; })
+		.attr("width", function(d){return 10;})
+		.text(function(d){return d.name});    
+	
+	// Function to update position of nodes in the graph
+	var ticked = function() {
+		node.attr("transform", function(d){
+			var dx = (d.x<=width && d.x>=0)?d.x:((d.x>width)?width:0),
+				dy = (d.y<=height && d.y>=0)?d.y:((d.y>height)?height:0);
+				d.fx = (dx==width)?dx:((dx==0)?0:d.fx);
+				d.fy = (dy==height)?dy:((dy==0)?0:d.fy);
+				
+			return "translate("+dx+","+dy+")"});
+	}  
+	
+	simulation
+		.nodes(nodes)
+		.on("tick", ticked);
+	
+	// Drag of node started
+	function dragstarted(d) {
+		if(mode == SENSOR){
+			if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+			d.fx = d.x;
+			d.fy = d.y;
+			
+			// Change selected node
+			selectedNode = d;
+			fg.select("#circle_"+d.id).attr("fill",function(){if(d.secondary_antenna!=null && d.secondary_antenna>=0){return "blue"}else{return "black"}});
+			fg.selectAll("#selectedCircle").remove()
+			fg.select("#node_"+d.id).append("circle").attr("id","selectedCircle").style("stroke-dasharray", ("10,3")).style("stroke", "black").style("fill", "none")
+				.attr("r", 30);  
+			
+			// Update name shown in the textfield
+			document.getElementById("sensorName").value = d.name;
+			document.getElementById("sec_antenna").value = d.secondary_antenna;
+		}
+	}
+	
+	// Drag of node now executing
+	function dragged(d) {
+		if(mode == SENSOR){
+			d.fx = d3.event.x;
+			d.fy = d3.event.y;
+		}
+	}
+	
+	// Node finished being dragged
+	function dragended(d) {
+		if(mode == SENSOR){
+			if (!d3.event.active) simulation.alphaTarget(0);
+		}
+	} 
+}
+
+// Draw grid for defining obstacles
+function drawGrid(){
+	names = ["obstacles", "floors"];
+	for(var i=0;i<2;i++){
+		name = names[i];
+		for(var y=0;y<gHeight;y++){
+			for(var x=0;x<gWidth;x++){
+				ffg.append("rect")
+					.attr("width",width/gWidth)
+					.attr("height",height/gHeight)
+					.attr("x",x*width/gWidth)
+					.attr("y",y*height/gHeight)
+					.attr("id","square_"+x+"_"+y)
+					.attr("class", name)
+					.attr("row",y)
+					.attr("col",x)
+					.attr("fill","black")
+					.attr("fill-opacity","0")
+					.attr("stroke","#bcbddc")
+					.style("pointer-events", "visible")
+					.on("mousedown",function(){mousedown=true; toggleColor(this)})
+					.on("mouseup", function(){mousedown=false})
+					.on("mouseover",function(){d3.select(this).style("cursor", "pointer"); toggleColor(this)})
+					.on("mouseout",function(){d3.select(this).style("cursor", "default")});
+			}
+		}
+	}
+	// Hide the created grid, show it only when required
+	toggleGrid();
+}
+
+// Enter sensor edition mode
+function editSensors(){
+	mode = SENSOR;
+	document.getElementById("sensors").disabled = true;
+	document.getElementById("obstacles").disabled = false;
+	document.getElementById("floors").disabled = false;	
+	toggleGrid();
+}
+
+// Enter obstacles edition mode
+function editObstacles(){
+	mode = OBSTACLE;
+	document.getElementById("sensors").disabled = false;
+	document.getElementById("obstacles").disabled = true;
+	document.getElementById("floors").disabled = false;	
+	toggleGrid();
+}
+
+// Enter obstacles edition mode
+function editFloors(){
+	mode = FLOOR;
+	document.getElementById("sensors").disabled = false;
+	document.getElementById("obstacles").disabled = false;
+	document.getElementById("floors").disabled = true;	
+	toggleGrid();
+}
+
+// Change name of selected node
+function changeName(){
+	if(selectedNode.id>=0){
+		selectedNode.name=document.getElementById("sensorName").value;
+		fg.select("#name_"+selectedNode.id).text(document.getElementById("sensorName").value);
+	}
+}
+
+// Add/remove new secondary antenna
+function changeSecondary(){
+	var sec = document.getElementById("sec_antenna");
+	if(sec.value.length > 0 & selectedNode.id>=0){
+		fg.select("#circle_"+selectedNode.id).attr("fill","blue");
+		selectedNode.secondary_antenna=document.getElementById("sec_antenna").value;
+	}else{
+		fg.select("#circle_"+selectedNode.id).attr("fill","black");
+		selectedNode.secondary_antenna=null;
+	}
+}
+
+// Helpers to hide/show the grid
+function toggleGrid(){
+	if(mode == SENSOR){
+		ffg.selectAll(".obstacles").style("visibility", "hidden");
+		ffg.selectAll(".floors").style("visibility", "hidden");
+	}else if(mode == OBSTACLE){
+		ffg.selectAll(".obstacles").style("visibility", "visible");
+		ffg.selectAll(".floors").style("visibility", "hidden");
+	}else{
+		ffg.selectAll(".obstacles").style("visibility", "hidden");
+		ffg.selectAll(".floors").style("visibility", "visible");
+	}
+}
+
+// Handle click on cells of the grid (change their color and state (="obstacle" or "floor_x"))
+function toggleColor(d){
+	var obj = d3.select(d);
+	var row = parseInt(obj.attr("row")),
+		col = parseInt(obj.attr("col"));
+		
+	if(mousedown){
+		if(mode == OBSTACLE){
+			if(obs[col][row]!= 0){
+				obj.attr("fill-opacity","0.5");
+				obs[col][row]=0;
+			}else{
+				obj.attr("fill-opacity","0");
+				obs[col][row]=1;
+			}
+		}else{
+			if(floors[col][row]!=-1){
+				obj.attr("fill-opacity","0");
+				floors[col][row]=-1;
+			}else{
+				obj.attr("fill", colors[selectedFloor]);
+				obj.attr("fill-opacity","1");
+				floors[col][row]=selectedFloor;
+			}
+		}
+	}
+};
+
+// Generate a path using A* algorithm and path smoothing function
+function generatePath(){
+	
+	if(typeof nodes === "undefined" || nodes === null){
+		window.alert("Create some nodes first");
+		return;
+	}
+	
+	// Set higher weights for squares next to a wall (nicer visualization)
+	setWeights();
+	
+	var graph = new Graph(obs, {diagonal:true});
+	
+	fg.selectAll(".generatedpath").remove();
+	paths = []
+	
+	for(var i=0;i<nodes.length-1;i++){
+		for(var j=i+1;j<nodes.length;j++){			
+			
+			// Get position of start and end sensors and find their correspondent position in the grid
+			var n1 = getPos(fg.select("#node_"+(i+1))),
+				n2 = getPos(fg.select("#node_"+(j+1))),
+				start = graph.grid[Math.floor(n1.x/width*gWidth)][Math.floor(n1.y/height*gHeight)],
+				end = graph.grid[Math.floor(n2.x/width*gWidth)][Math.floor(n2.y/height*gHeight)];
+			
+			// Apply A* pathfinding algorithm
+			var result = astar.search(graph, start, end, { heuristic: astar.heuristics.diagonal });
+				
+			// Create a path between the centers of the squares found with A* 
+			var points = [{x: n1.x/width*gWidth, y: n1.y/height*gHeight}];
+			for(var k=0; k<result.length-1; k++){
+				points.push({x: result[k].x+0.5, y: result[k].y+0.5});					
+			}
+			points.push({x: n2.x/width*gWidth, y: n2.y/height*gHeight});
+			
+			/* 	Smooth out unnecessary midpoints with the algorithm http://www.gamasutra.com/view/feature/131505/toward_more_realistic_pathfinding.php
+			*	e.g. :  _
+			*            \_		=> \
+			*			   \		\
+			*/
+			var smoothed = [points[0]];
+			var checkpoint = 0;
+			var currentPoint = 0;
+			
+			while(currentPoint+1<points.length){
+				if (!walkable(points[checkpoint],points[currentPoint+1])){
+					smoothed.push(points[currentPoint]);
+					checkpoint = currentPoint;
+				}
+				currentPoint++;
+			}
+			smoothed.push(points[points.length-1]);
+			
+			// Helper function to check if any of 5 points each 1 unit of distance on the line between a point and another are on an obstacle
+			function walkable(p1, p2){
+				var size = 1.5;
+				var di = dist(p1,p2);
+				for(var z=0; z<5*di; z++){
+					var x = (p2.x-p1.x)*z/(5*di)+p1.x;
+					var y = (p2.y-p1.y)*z/(5*di)+p1.y;
+					
+					for(var k=-size;k<=size;k++){
+						for(var ky=size;ky>=-size;ky--){
+							var xSize = k*size;
+							var ySize = ky*size;
+							try{
+								if(obs[Math.floor(x+xSize)][Math.floor(y+ySize)]==0)
+									return false;
+							}catch(err){
+								return false;
+							}
+						}
+					}
+				}
+				return true;
+			}
+			
+			// Euclidean distance between p1 and p2
+			function dist(p1, p2){
+				return Math.floor(Math.sqrt(Math.pow((p2.x-p1.x),2)+Math.pow((p2.y-p1.y),2)));
+			}
+			
+			// Store points of the path for later form submission (in percentage of svg size)
+			var tempPoints = [];
+			for(var count=0;count<smoothed.length;count++){
+				tempPoints.push({x: smoothed[count].x/gWidth*100, y: smoothed[count].y/gHeight*100});
+			}
+			paths.push({start: (i+1), end: (j+1), points: tempPoints});
+			
+			// Transform result to points in svg coordinates
+			var points1 = [];
+			for(var k=0;k<smoothed.length;k++){
+				points1.push({id: k, x: smoothed[k].x*width/gWidth, y: smoothed[k].y*height/gHeight});
+			}
+			
+			// Draw lines showing the found paths (Also in visualizations, use CatmullRom curves)
+			var lineFunction = d3.line().x(function(d){return d.x}).y(function(d){return d.y}).curve(d3.curveCatmullRom);//Cardinal);
+			var lineGraph = fg.append("path").attr("d", lineFunction(points1))
+								.attr("class","generatedpath")
+								.attr("stroke", "green")
+								.attr("stroke-width", 2)
+								.attr("fill","none");
+		}
+	}
+	
+}
+
+// Set weights of squares around a wall
+function setWeights(){
+	for(var x=0;x<obs.length;x++){
+		for(var y=0;y<obs[x].length;y++){
+			if(obs[x][y]==0){
+				for(var i=-3;i<=3;i++){
+					for(var j=-3;j<=3;j++){
+						if(x+j>=0 && x+j<obs.length && y+i>=0 && y+i<obs[x].length){
+							var temp;
+							if(Math.abs(i) == 3 || Math.abs(j) == 3){
+								temp=(obs[x+j][y+i]!=0)?5:0;
+							}else if(Math.abs(i) == 2 || Math.abs(j) == 2){
+								temp=(obs[x+j][y+i]!=0)?10:0;
+							}else if(Math.abs(i) == Math.abs(j)){
+								temp=(obs[x+j][y+i]!=0)?20:0;
+							}else{
+								temp=(obs[x+j][y+i]!=0)?100:0;
+							}
+							obs[x+j][y+i] = (temp != 0 && temp > obs[x+j][y+i])? temp: obs[x+j][y+i];
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+
+// Extract x,y position of node from translate(x,y) position
+function getPos(d){
+	try{
+		var m = d.node().transform.baseVal[0].matrix;
+		return {x:m.e, y:m.f};
+	}catch(err){
+		window.alert(err.message);
+		return {x:0,y:0};
+	}
+}
+</script>
+
+<script type="text/javascript">
+/**
+*	Retrieve all the important data from the form
+*/
+function submitForm(){
+	if(typeof nodes === "undefined" || nodes === null){
+		window.alert("Create some nodes first");
+		return;
+	}
+	
+	// Event variables
+	var e_name = $("#id_name").val(),
+		e_startDate = $("#id_startDate_0").val()+" "+$("#id_startDate_1").val(), 
+		e_stopDate = $("#id_stopDate_0").val()+" "+$("#id_stopDate_1").val(), 
+		e_groups = $("#id_groups").val(), 
+		e_description = $("#id_description").val(),
+		e_bg,
+		e_obstacles = obs,
+		e_floors = [];
+		
+	// Save floors
+	for(var i=0;i<10;i++){
+		var minX = gWidth,
+		minY = gHeight,
+		maxX = 0,
+		maxY = 0,
+		count = 0;
+		for(var row=0;row<gHeight;row++){
+			for(var col=0;col<gWidth;col++){
+				if(floors[col][row]==i){
+					minX = Math.min(col, minX);
+					minY = Math.min(row, minY);
+					maxX = Math.max(col, maxX);
+					maxY = Math.max(row, maxY);
+					count++;
+				}
+			}
+		}
+		if(count>=2){
+			e_floors.push({name: i, x: minX/gWidth*100, y: minY/gHeight*100, width:(maxX-minX)/gWidth*100, height: (maxY-minY)/gHeight*100});
+		}
+	}
+	
+	// Handle image
+	var img = document.getElementById("id_background");
+	if (img.files && img.files[0]) {
+		e_bg = img.files[0];
+	}
+	
+	// Sensors variables
+	var e_sensors = [];
+	
+	for(var i=0;i<nodes.length;i++){
+		e_sensors.push({id: nodes[i].id, secondary_antenna: nodes[i].secondary_antenna, name: nodes[i].name, x: nodes[i].x/width*100, y: nodes[i].y/height*100});
+	}
+	
+	//Paths variables
+	var e_paths = paths;
+
+	/**
+	*	Handle form submission
+	*/
+	var formData = new FormData();
+	// Add elements to formdata
+	formData.append("name",e_name);
+	formData.append("description", e_description);
+	formData.append("startDate",e_startDate);
+	formData.append("stopDate",e_stopDate);
+	formData.append("groups",JSON.stringify(e_groups));
+	formData.append("obstacles", JSON.stringify(e_obstacles));
+	formData.append("floors", JSON.stringify(e_floors));
+	// The background image
+	formData.append("backgroundImage",e_bg);
+	
+	// Sensors
+	formData.append("sensors",JSON.stringify(e_sensors));
+
+	//Paths
+	formData.append("paths", JSON.stringify(e_paths));
+	
+	// Send to the correct view
+	var str = window.location.href;
+	
+	$.ajax({
+	  url: str.slice(0,str.indexOf("/admin"))+"/hubnet/saveEvent",
+	  type: 'POST',
+	  processData: false, // important
+	  contentType: false, // important
+	  dataType : 'json',
+	  data: formData,
+	  error: function(response){
+		if (response.responseText.length > 2){
+			window.alert("Please fix the following errors:\n"+response.responseText);
+		}else{
+			window.location.replace(str.slice(0,str.indexOf("/admin"))+"/admin");
+		}
+	  }
+	});
+}
+</script>
+<script type="text/javascript">
+document.getElementById("sensorNum")
+    .addEventListener("keydown", function(event) {
+    if (event.keyCode == 13) {
+		event.preventDefault();
+        document.getElementById("checkNum").click();
+    }
+});
+
+document.getElementById("sensorName")
+    .addEventListener("keydown", function(event) {
+	if (event.keyCode == 13) {
+		event.preventDefault();
+		document.getElementById("sensorName").blur();
+    }
+});
+
+document.getElementById("sec_antenna")
+    .addEventListener("keydown", function(event) {
+	if (event.keyCode == 13) {
+		event.preventDefault();
+		document.getElementById("sec_antenna").blur();
+    }
+});
+</script>
+{% endblock %}

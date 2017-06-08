@@ -1,0 +1,165 @@
+/*
+	table_style.css
+	Author: Moreno Colombo
+	Creation date: 21.01.2017
+	Last modified: 21.01.2017
+	Description: Style tables and form
+*/
+
+/* Form style */
+h1,h2,h3,body{
+	font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+}
+
+#filterscontainer {
+	float: left;
+	padding: 10px;
+	margin-bottom: 20px;
+}
+
+#columns {
+	border: 2px solid grey;
+    border-radius: 5px;
+	padding: 20px;
+}
+
+#columns fieldset {
+	border: 1px solid #E8E8EE;
+    border-radius: 5px;
+	display:inline-block;
+	padding: 10px;
+	font-size: small;
+}
+
+/* Filters list */
+#filters  {
+	border: 2px solid grey;
+    border-radius: 5px;
+	padding: 20px;
+}
+
+/*#columns fieldset {
+	border: 1px solid #E8E8EE;
+    border-radius: 5px;
+	display:inline-block;
+	padding: 10px;
+	font-size: small;
+}*/
+
+/* Button style */
+#updatecolumns {
+	float:right;
+	display: block;
+	border-radius: 4px;
+	background-color: #4CAF50;
+	border: none;
+	color: white;
+	font-size: medium;
+	text-align: center;
+	padding: 10px;
+	width: 120px;
+	cursor: pointer;
+	margin: 5px;
+}
+
+#updatecolumns span {
+	cursor: pointer;
+	display: inline-block;
+	position: relative;
+	transition: 0.5s;
+}
+
+#updatecolumns span:after {
+	content: "\00bb";
+	position: absolute;
+	opacity: 0;
+	top: 0;
+	right: -20px;
+	transition: 0.5s;
+}
+
+#updatecolumns:hover span {
+	padding-right: 25px;
+}
+
+#updatecolumns:hover span:after {
+	opacity: 1;
+	right: 0;
+}
+
+.filtertitle {
+	color: grey;
+}
+
+.checkvalue + label {
+	margin-right: 10px
+}
+
+/* Table style */
+#table {
+	clear: left;
+}
+
+#dbcontent {
+    border-collapse: collapse;
+    width: 100%;
+}
+
+#dbcontent td, #dbcontent th {
+    border: 1px solid #ddd;
+    padding: 8px;
+}
+
+#dbcontent tr:nth-child(even){background-color: #f2f2f2;}
+
+#dbcontent tr:hover {background-color: #ddd;}
+
+#dbcontent th {
+    padding-top: 12px;
+    padding-bottom: 12px;
+    text-align: left;
+    background-color: #4CAF50;
+    color: white;
+}
+
+#filts{
+	text-align: center;
+}
+
+/* Navigation buttons */
+.navigation {
+	border-radius: 4px;
+	background-color: #4CAF50;
+	border: none;
+	color: white;
+	text-align: center;
+	padding: 5px;
+	cursor: pointer;
+	margin: 5px;
+}
+
+/* Button to cancel filter */
+#remove_filter{
+	background-color: #f44336;
+}
+
+#recordsNum{
+	line-height: 50px;
+}
+
+/* Export button */
+#export {
+	float: right;
+	display: inline-block;
+	margin-left: 80%;
+	border-radius: 4px;
+	background-color: #f44336;
+	border: none;
+	color: white;
+	text-align: center;
+	font-size: medium;
+	padding: 10px;
+	cursor: pointer;
+	margin: 5px;
+	margin-right: 10%;
+}

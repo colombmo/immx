@@ -1,0 +1,185 @@
+{% load static %}
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>ImmersiveX - choose event</title>
+	<meta name="description" content="Tables">
+	<meta name="author" content="Moreno Colombo">
+	<style type="text/css">
+		html { 
+			background: url({% static 'images/mountain_data.jpg' %}) no-repeat center center fixed; 
+			-webkit-background-size: cover;
+			-moz-background-size: cover;
+			-o-background-size: cover;
+			background-size: cover;
+		}
+		
+		#outer {
+			display: table;
+			position: absolute;
+			height: 60%;
+			width: 99%;
+		}
+		
+		#navbar{
+			display:table-row;
+			line-height: 40px;
+		}
+		
+		#mid{display: table-row}
+
+		#inner {
+			display: table-cell;
+			text-align:center;
+			vertical-align: middle;
+		}
+		
+		#inner a{
+			text-align: center;
+			font-size: 200%;
+			color: white;
+			vertical-align:middle;
+		}
+		
+		h1,h2,h3,body{
+			font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+			color: white;
+		}
+		
+		#nav {
+			list-style-type: none;
+			margin: 0;
+			padding: 0;
+			overflow: hidden;
+		}
+
+		#nav .left {
+			font-weight: bold;
+			float: left;
+			font-size: 300%;
+			vertical-align:middle;
+		}
+		#nav div {float:right;}
+		#nav div .right{float:left;
+			vertical-align:middle;}
+
+		#nav .left>a, #nav .right>a{
+			display: block;
+			color: white;
+			text-align: center;
+			padding: 14px 16px;
+			text-decoration: none;
+			opacity: 0.6;
+		}
+		
+		#nav li a:hover{
+			opacity:1;
+			transition: 1s;
+		}
+		
+		.dropdown-content {
+			display: none;
+			position: absolute;
+			background-color: white;
+			min-width: 160px;
+			box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+			z-index: 1;
+		}
+
+		.dropdown-content .cont {
+			color: black;
+			padding: 6px 8px;
+			text-decoration: none;
+			display: block;
+			text-align: left;
+		}
+
+		.dropdown-content a:hover {background-color: #999}
+
+		.dropdown:hover .dropdown-content {
+			display: block;
+		}
+		
+		/* Navigation buttons */
+		button {
+			border-radius: 20px;
+			background-color: #4CAF50;
+			border: none;
+			color: white;
+			font-size: 150%;
+			text-align: center;
+			padding: 10px 20px;
+			cursor: pointer;
+			margin: 5px;
+		}
+	</style>
+</head>
+
+<body>
+	<script src="{% static 'js/jquery.min.js' %}"></script>
+	<div id="outer">
+		<div id="navbar">
+			<ul id="nav">
+				<li class="left"><a href="javascript:void(0)">X</a></li>
+				<div>
+				<li class="dropdown right"><a href="javascript:void(0)" class="dropbtn">Tables &#9660;</a>
+					<div class="dropdown-content">
+						<a class="cont" href="{% url 'show_table' 'raw_records'%}">Raw records</a>
+						<a class="cont" href="{% url 'show_table' 'occupations'%}">Occupations</a>
+						<a class="cont" href="{% url 'show_table' 'movements'%}">Movements</a>
+					</div>
+				</li>
+				<li class="dropdown right"><a href="javascript:void(0)" class="dropbtn">Data visualization &#9660;</a>
+					<div class="dropdown-content">
+						<a class="cont" href="{% url 'paths' %}">Paths</a>
+						<a class="cont" href="{% url 'movements' %}">Movements</a>
+					</div>
+				</li>
+				<li class="right"><a href="{% url 'admin:index' %}">Administration</a></li>
+				</div>
+			</ul>
+		</div>
+		<div id="mid">
+			<div id="inner">
+				<a>Select an event: </a>
+				<select id="sel" onchange="getfloors();">
+					{% for opt in tableData.data %}
+						<option value="{{opt.id}}">{{opt.name}}</option>
+					{% endfor %}
+				</select>
+				<select id="fl_sel">
+				</select>
+				<p><button onclick="select();">Select</button></p>
+			</div>
+		</div>
+	</div>
+</body>
+
+<script type="text/javascript">
+function select(){
+	var e = document.getElementById('sel');
+	var f = document.getElementById('fl_sel');
+	if(f.options[f.selectedIndex].value != "-1"){
+		window.location.href = "{{tableData.viz}}/"+e.options[e.selectedIndex].value+"/1/"+f.options[f.selectedIndex].value;
+	}else{	
+		window.location.href = "{{tableData.viz}}/"+e.options[e.selectedIndex].value;	
+	}
+}
+
+getfloors();
+
+function getfloors(){
+	var floors = {{tableData.floors | safe}}
+	var sel = $("#fl_sel").find("option").remove().end();
+	sel.append("<option value='-1'>None</option>");
+	for(var i=0;i<floors.length;i++){
+		var e = document.getElementById('sel')
+		console.log(e.options[e.selectedIndex].value);
+		if(floors[i].e_id == e.options[e.selectedIndex].value){
+			sel.append("<option value='"+floors[i].id+"'>"+floors[i].name+"</option>");
+		}
+	}
+}
+</script>
+</html>

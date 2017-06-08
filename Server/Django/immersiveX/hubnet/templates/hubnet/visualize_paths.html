@@ -1,0 +1,98 @@
+<!-- {# 
+#
+# 	visualize_paths.html
+#	Author: Moreno Colombo
+#	Creation date: 26.01.2017
+#	Last modified: 27.01.2017
+#
+#	Description: graphical visualization of paths taken by participants
+#} -->
+{% load static %}
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>ImmersiveX</title>
+	<meta name="description" content="Tables">
+	<meta name="author" content="Moreno Colombo">
+	<style type="text/css">
+		html { 
+			background: #111111 no-repeat center center fixed; 
+			-webkit-background-size: cover;
+			-moz-background-size: cover;
+			-o-background-size: cover;
+			background-size: cover;
+		}
+		
+		#X{
+			position:absolute;
+			font-weight: bold;
+			font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+			color: white;
+			text-align: center;
+			padding: 14px 16px;
+			text-decoration: none;
+			opacity: 0.6;
+			font-size:200%;
+			padding:0px;
+			margin: 0px;
+		}
+	</style>
+	
+		
+	{# Add scripts to the content of the page #}
+	<script src="{% static 'js/jquery.min.js' %}"></script>
+	<script src="{% static 'js/d3.min.js' %}"></script>
+</head>
+
+<body>
+	<a id="X" href="{% url 'home' %}">X</a>
+	<div id="viz">
+	</div>
+	
+</body>
+<script type="text/javascript">
+// Keep 16:9 aspect ratio
+var height = 0.9*screen.height,
+	width = 16*height/9;
+	
+// Datavar 
+var data = {{ tableData.data | safe }};
+
+
+// Append svg object where we draw our edition system
+var svg = d3.select("#viz").append("svg").attr("width", width).attr("height", height);
+
+var lineFunction = d3.line().x(function(d){return d.x/100*width}).y(function(d){return d.y/100*height}).curve(d3.curveCatmullRom);//Cardinal);								
+svg.selectAll(".path")
+		.data(data)
+		.enter().append("path")
+		.attr("d", function(d){
+					var randx = 3*randn_bm()-1.5;
+					var randy = 3*randn_bm()-1.5;
+					var randu = 1*Math.random()-0.5;
+					var randv = 1*Math.random()-0.5;
+					
+					var points = [{x: d.startSensor_x+randu, y: d.startSensor_y+randv},
+								{x: (d.endSensor_x-d.startSensor_x)/2+randx+d.startSensor_x, y: (d.endSensor_y-d.startSensor_y)/2+randy+d.startSensor_y},
+								{x: d.endSensor_x+randu, y: d.endSensor_y+randv}];
+					return lineFunction(points)})
+		.attr("class", "path")
+		.attr("stroke-width",1)
+		.attr("stroke",/*function(d){ return getRandomColor()})*/function(d){return d.Participant_color})
+		.attr("stroke-opacity", 0.07)
+		.attr("fill","none");
+
+// Standard Normal variate using Box-Muller transform.
+function randn_bm() {
+    var u = 1 - Math.random(); // Subtraction to flip [0, 1) to (0, 1].
+    var v = 1 - Math.random();
+    return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+}		
+		
+function getRandomColor() {
+    var cols = ["#CCCCFF", "#CCFFCC", "#FFCCCC", "#CCFFFF", "#FFFFCC", "#FFCCFF"];
+    return cols[Math.floor(Math.random() * 7)];
+}
+</script>
+</html>

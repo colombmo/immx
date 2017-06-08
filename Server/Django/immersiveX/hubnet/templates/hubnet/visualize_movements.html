@@ -1,0 +1,145 @@
+<!-- {# 
+#
+# 	visualize_paths.html
+#	Author: Moreno Colombo
+#	Creation date: 26.01.2017
+#	Last modified: 27.01.2017
+#
+#	Description: graphical visualization of paths taken by participants
+#} -->
+{% load static %}
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>ImmersiveX</title>
+	<meta name="description" content="Tables">
+	<meta name="author" content="Moreno Colombo">
+	<style type="text/css">
+		#X{
+			position:absolute;
+			font-weight: bold;
+			font-family: "Trebuchet MS", Arial, Helvetica, sans-serif;
+			color: black;
+			text-align: center;
+			padding: 14px 16px;
+			text-decoration: none;
+			opacity: 0.6;
+			font-size:200%;
+			padding:0px;
+			margin: 0px;
+		}
+	</style>
+	
+		
+	{# Add scripts to the content of the page #}
+	<script src="{% static 'js/jquery.min.js' %}"></script>
+	<script src="{% static 'js/d3.min.js' %}"></script>
+	<script src="{% static 'js/TweenMax.min.js' %}"></script>
+	<script src="{% static 'js/saveAs.js' %}"></script>
+</head>
+
+<body>
+	<a id="X" href="{% url 'home' %}">X</a>
+	<div id="viz">
+	</div>
+	
+</body>
+<script type="text/javascript">
+// Keep 16:9 aspect ratio
+var height = 0.9*screen.height,
+	width = 16*height/9;
+	
+// Datavar 
+var tableData = {{ tableData | safe }};
+var data = tableData.data;
+var event = tableData.event;
+var paths = tableData.paths;
+var speed = tableData.speed;
+var floor = tableData.floor;
+
+var backgroundImage =  "{{ MEDIA_URL}}{{ backgroundImage }}"
+
+// Find image width and height for single-floor situations
+var imgH = height,
+	imgW = width;
+if(floor!=null){
+	if(floor.width/floor.h >= 16/9){
+		imgW = width/(floor.width/100);
+		imgH = 9/16*imgW;
+	}else{
+		imgH = height/(floor.height/100);
+		imgW = 16/9*imgH;
+	}
+}
+
+// Adjust paths' points to satisfy the size of the svg image
+for(var key in paths){
+	for(var i=0;i<paths[key].length;i++){
+		if(floor!=null){
+			paths[key][i] = {x: (paths[key][i].x-floor.x)/100*imgW, y: (paths[key][i].y-floor.y)/100*imgH};
+		}else{
+			paths[key][i] = {x: paths[key][i].x/100*width, y: paths[key][i].y/100*height};
+		}
+	}
+}
+
+//event.duration = (new Date(data[data.length-1].Movement_start).getTime() - new Date(data[0].Movement_start).getTime())/1000;
+
+// Compute delay time to start animation
+var s = data[0];
+for(var i = 0; i<data.length;i++){
+	var dif = (new Date(data[i].Movement_start).getTime() - new Date(s.Movement_start).getTime())/1000;
+	data[i].id=i;
+	data[i].startTime = dif/(event.duration)*20;
+}
+
+// Append svg object where we draw our edition system
+var svg = d3.select("#viz").append("svg").attr("width", width).attr("height", height);
+
+// Show background image
+if("{{backgroundImage}}".length>0){
+	if(floor != null){
+		svg.append("svg:image").attr('xlink:href', backgroundImage)
+			.attr("x", -imgW*(floor.x/100))
+			.attr("y", -imgH*(floor.y/100))
+			.attr("width", imgW)
+			.attr("height", imgH);
+	}else{
+		svg.append("svg:image").attr('xlink:href', backgroundImage).attr("x", 0).attr("y", 0)
+			.attr("width", width)
+			.attr("height", height);
+	}
+}
+
+var animationPath = svg.selectAll(".animation")
+	.data(data)
+	.enter().append("circle")
+	.attr("transform", function(d){
+							if(floor != null){
+								return "translate("+(d.startSensor_x-floor.x)/100*imgW+","+(d.startSensor_y-floor.y)/100*imgH+")";
+							}else{
+								return "translate("+d.startSensor_x/100*width+","+d.startSensor_y/100*height+")";
+							}})
+	.attr("id",function(d){return "c_"+d.id})
+	.attr("r", 5)
+	.attr("fill", function(d){return d.Participant_color});
+
+for(var i=0;i<data.length;i++){
+	var bez = {
+			//type: "soft",
+			values: paths[data[i].startSensor_sensorId+"_"+data[i].endSensor_sensorId],
+			autoRotate: false
+		};
+	var el = document.getElementById("c_"+i);
+	TweenMax.set(el, {scale:0})
+	
+	if(bez.values){
+		var anim = TweenMax.to(el, Math.max(1,data[i].Movement_duration/event.duration*60), {bezier: bez, ease: Power1.easeInOut, delay: data[i].startTime});
+		var animSize = TweenMax.to(el, Math.max(1,data[i].Movement_duration/event.duration*60)/5, {scale: 1, ease: Linear.easeNone, delay: data[i].startTime});
+		var animSize2 = TweenMax.to(el, Math.max(1,data[i].Movement_duration/event.duration*60)/10, {scale: 0, ease: Linear.easeNone, delay: data[i].startTime+Math.max(1,data[i].Movement_duration/event.duration*60)/10*9});
+	}
+}
+TweenMax.globalTimeScale(1/speed);
+</script>
+</html>
